@@ -1,3 +1,5 @@
+# This is the "Blue" deployment
+# It will be deployed first, or as the "old" version
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,17 +18,21 @@ spec:
     spec:
       containers:
       - name: myapp-container
-        image: rohhxn/myapp-bluegreen:__IMAGE_TAG__ # Placeholder
+        # This image tag will be replaced by the Jenkins pipeline
+        image: rohhxn/myapp-bluegreen:__IMAGE_TAG__
         ports:
         - containerPort: 8080
         env:
         - name: APP_VERSION
-          value: "__VERSION__ (Blue)"
+          # This version string will be replaced by the Jenkins pipeline
+          value: "__VERSION__ (Blue) 🔵"
         - name: BACKGROUND_COLOR
-          value: "cornflowerblue"
+          value: "deepskyblue"
+        # Liveness probe to check if the app is healthy
         livenessProbe:
           httpGet:
             path: /health
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
+
