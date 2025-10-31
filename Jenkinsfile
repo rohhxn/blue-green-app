@@ -32,7 +32,8 @@ pipeline {
                         
                         // 1. Determine current live color
                         // We run this *without* -o jsonpath to avoid errors if the service doesn't exist
-                        def currentColor = sh(script: "sudo kubectl get service myapp-service -o=jsonpath='{.spec.selector.version}' || echo 'blue'", returnStdout: true).trim()
+                        // !!! FIX: Removed 'sudo' !!!
+                        def currentColor = sh(script: "kubectl get service myapp-service -o=jsonpath='{.spec.selector.version}' || echo 'blue'", returnStdout: true).trim()
                         if (currentColor.contains("No resources")) {
                             currentColor = "blue"
                         }
@@ -49,9 +50,11 @@ pipeline {
                         sh "sed -i 's|__IMAGE_TAG__|${imageTag}|g' ${newDeploymentFile}-temp"
                         sh "sed -i 's|__VERSION__|v${env.BUILD_NUMBER}|g' ${newDeploymentFile}-temp"
                         
-                        sh "sudo kubectl apply -f ${newDeploymentFile}-temp"
+                        // !!! FIX: Removed 'sudo' !!!
+                        sh "kubectl apply -f ${newDeploymentFile}-temp"
                         sh "echo 'Waiting for ${newDeployColor} deployment to complete...'"
-                        sh "sudo kubectl rollout status deployment/myapp-${newDeployColor}"
+                        // !!! FIX: Removed 'sudo' !!!
+                        sh "kubectl rollout status deployment/myapp-${newDeployColor}"
                         
                         // 3. Manual Approval Step
                         timeout(time: 5, unit: 'MINUTES') {
@@ -60,14 +63,16 @@ pipeline {
 
                         // 4. Switch Service to point to the new version
                         echo "Switching service to point to ${newDeployColor}"
-                        def patchCommand = "sudo kubectl patch service myapp-service -p '{\"spec\":{\"selector\":{\"version\":\"${newDeployHColor}\"}}}'"
+                        // !!! FIX: Removed 'sudo' !!!
+                        def patchCommand = "kubectl patch service myapp-service -p '{\"spec\":{\"selector\":{\"version\":\"${newDeployColor}\"}}}'"
                         sh patchCommand
 
                         echo "Deployment successful. ${newDeployColor} is now live."
 
                         // 5. (Optional) Scale down the old environment
                         echo "Scaling down old deployment ${currentColor}..."
-                        sh "sudo kubectl scale deployment myapp-${currentColor} --replicas=0"
+                        // !!! FIX: Removed 'sudo' !!!
+                        sh "kubectl scale deployment myapp-${currentColor} --replicas=0"
                     }
                 }
             }
