@@ -86,7 +86,8 @@ pipeline {
 
                         // --- Scale down the old deployment ---
                         echo "Scaling down old ${currentLiveColor} deployment..."
-                        sh "kubectl scale deployment myapp-${currentLiveColor} --replicas=0"
+                        // We add '|| true' so this step doesn't fail the build if the old deployment doesn't exist (e.g., on the first run)
+                        sh "kubectl scale deployment myapp-${currentLiveColor} --replicas=0 || true"
                     }
                 }
             }
