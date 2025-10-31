@@ -1,78 +1,91 @@
+/*
+This is the Jenkinsfile for the Blue-Green deployment.
+It assumes:
+1. A Docker Hub credential with ID 'dockerhub-credentials'.
+2. A Kubernetes credential with ID 'kubeconfig'.
+3. A 'service.yaml' file that initially points to 'version: blue'.
+*/
 pipeline {
     agent any
 
     environment {
-        // !!! CHANGE 'rohhxn' to your Docker Hub username !!!
-        DOCKER_IMAGE_NAME = "rohhxn/myapp-bluegreen" 
-        KUBE_CONFIG = credentials('kubeconfig')
+        // Your Docker Hub username + repository name
+        DOCK_IMAGE = "rohhxn/myapp-bluegreen"
+        // Jenkins build number will be our version tag (e.g., v1, v2, v3)
+        VERSION_TAG = "v${env.BUILD_NUMBER}"
     }
 
     stages {
-        // Jenkins automatically checks out the code, so no 'Checkout' stage needed
-
-        stage('Build & Push Docker Image') {
+        stage('1. Build & Push Docker Image') {
             steps {
                 script {
-                    def imageTag = "v${env.BUILD_NUMBER}"
-                    docker.build("${DOCKER_IMAGE_NAME}:${imageTag}", ".")
+                    echo "Building image: ${DOCK_IMAGE}:${VERSION_TAG}"
+                    // Build the Docker image
+                    def customImage = docker.build(DOCK_IMAGE, "--build-arg APP_VERSION=${VERSION_TAG} .")
+                    
+                    // Log in to Docker Hub and push the image
                     docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                        docker.image("${DOCKER_IMAGE_NAME}:${imageTag}").push()
+                        customImage.push(VERSION_TAG)
                     }
                 }
             }
         }
 
-        stage('Blue/Green Deploy') {
+        stage('2. Blue/Green Deploy') {
             steps {
-                script {
-                    def imageTag = "v${env.BUILD_NUMBER}"
-                    
-                    // Use withKubeConfig for all kubectl commands
-                    withKubeConfig([credentialsId: 'kubeconfig', context: 'default']) {
-                        
-                        // 1. Determine current live color
-                        // We run this *without* -o jsonpath to avoid errors if the service doesn't exist
-                        // !!! FIX: Removed 'sudo' !!!
-                        def currentColor = sh(script: "kubectl get service myapp-service -o=jsonpath='{.spec.selector.version}' || echo 'blue'", returnStdout: true).trim()
-                        if (currentColor.contains("No resources")) {
-                            currentColor = "blue"
-                        }
-                        echo "Current live version is: ${currentColor}"
+                // Use the kubeconfig credential to connect to our cluster
+                withKubeConfig([credentialsId: 'kubeconfig', context: 'default']) {
+                    script {
+                        // --- Create the service if it doesn't exist ---
+                        // This makes the pipeline safe to run on the first build
+                        echo "Applying service definition to ensure it exists..."
+                        sh "kubectl apply -f service.yaml"
 
-                        def newDeployColor = (currentColor == 'blue') ? 'green' : 'blue'
+                        // --- Determine which color is live and which is inactive ---
+                        def currentLiveColor = sh(script: "kubectl get service myapp-service -o jsonpath='{.spec.selector.version}'", returnStdout: true).trim()
+                        
+                        // If the service doesn't have a label (e.g., bad state), default to 'blue'
+                        if (!currentLiveColor) {
+                            currentLiveColor = 'blue'
+                        }
+
+                        def newDeployColor = (currentLiveColor == 'blue') ? 'green' : 'blue'
+                        
+                        echo "Current live version is: ${currentLiveColor}"
                         echo "Deploying new version to: ${newDeployColor}"
 
-                        // 2. Deploy the new version to the inactive color
+                        // --- Deploy the new/inactive version ---
                         def newDeploymentFile = "deployment-${newDeployColor}.yaml"
                         
-                        // We have two placeholders to replace now!
+                        // Create a temporary copy to replace placeholders
                         sh "cp ${newDeploymentFile} ${newDeploymentFile}-temp"
-                        sh "sed -i 's|__IMAGE_TAG__|${imageTag}|g' ${newDeploymentFile}-temp"
-                        sh "sed -i 's|__VERSION__|v${env.BUILD_NUMBER}|g' ${newDeploymentFile}-temp"
+                        // Replace __IMAGE_TAG__ with our new image (e..g, rohhxn/myapp-bluegreen:v3)
+                        sh "sed -i 's|__IMAGE_TAG__|${VERSION_TAG}|g' ${newDeploymentFile}-temp"
+                        // Replace __VERSION__ with our new version string (e.g., v3)
+                        sh "sed -i 's|__VERSION__|${VERSION_TAG}|g' ${newDeploymentFile}-temp"
                         
-                        // !!! FIX: Removed 'sudo' !!!
+                        echo "Applying deployment for ${newDeployColor}..."
+                        // Scale up the new deployment
                         sh "kubectl apply -f ${newDeploymentFile}-temp"
+                        sh "kubectl scale deployment myapp-${newDeployColor} --replicas=2"
                         sh "echo 'Waiting for ${newDeployColor} deployment to complete...'"
-                        // !!! FIX: Removed 'sudo' !!!
+                        // Wait for the new pods to be healthy
                         sh "kubectl rollout status deployment/myapp-${newDeployColor}"
                         
-                        // 3. Manual Approval Step
+                        // --- PAUSE FOR MANUAL APPROVAL ---
                         timeout(time: 5, unit: 'MINUTES') {
-                            input message: "Promote ${newDeployColor} to live? (Currently serving ${currentColor})"
+                            input message: "Promote ${newDeployColor} to live? (Currently serving ${currentLiveColor})"
                         }
 
-                        // 4. Switch Service to point to the new version
-                        echo "Switching service to point to ${newDeployColor}"
-                        // !!! FIX: Removed 'sudo' !!!
+                        // --- Switch the service traffic ---
+                        echo "Switching service to point to ${newDeployColor}..."
                         def patchCommand = "kubectl patch service myapp-service -p '{\"spec\":{\"selector\":{\"version\":\"${newDeployColor}\"}}}'"
                         sh patchCommand
+                        echo "Successfully switched traffic. ${newDeployColor} is now live!"
 
-                        echo "Deployment successful. ${newDeployColor} is now live."
-
-                        // 5. (Optional) Scale down the old environment
-                        echo "Scaling down old deployment ${currentColor}..."
-                        // !!! FIX: Removed 'sudo' !!!
-                        sh "kubectl scale deployment myapp-${currentColor} --replicas=0"
+                        // --- Scale down the old deployment ---
+                        echo "Scaling down old ${currentLiveColor} deployment..."
+                        sh "kubectl scale deployment myapp-${currentLiveColor} --replicas=0"
                     }
                 }
             }
