@@ -34,7 +34,8 @@ pipeline {
         stage('2. Blue/Green Deploy') {
             steps {
                 // Use the kubeconfig credential to connect to our cluster
-                withKubeConfig([credentialsId: 'kubeconfig', context: 'default']) {
+                // FIX: Changed 'context' to 'contextName' as required by the plugin
+                withKubeConfig([credentialsId: 'kubeconfig', contextName: 'default']) {
                     script {
                         // --- Create the service if it doesn't exist ---
                         // This makes the pipeline safe to run on the first build
