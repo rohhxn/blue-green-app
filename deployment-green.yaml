@@ -1,9 +1,12 @@
+# This is the "Green" deployment
+# It will be deployed as the "new" version
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp-green
 spec:
-  replicas: 2
+  # We start with 0 replicas and let the pipeline scale it up
+  replicas: 0
   selector:
     matchLabels:
       app: myapp
@@ -16,14 +19,17 @@ spec:
     spec:
       containers:
       - name: myapp-container
-        image: rohhxn/myapp-bluegreen:__IMAGE_TAG__ # Placeholder
+        # This image tag will be replaced by the Jenkins pipeline
+        image: rohhxn/myapp-bluegreen:__IMAGE_TAG__
         ports:
         - containerPort: 8080
         env:
         - name: APP_VERSION
-          value: "__VERSION__ (Green)"
+          # This version string will be replaced by the Jenkins pipeline
+          value: "__VERSION__ (Green) 🟢"
         - name: BACKGROUND_COLOR
           value: "seagreen"
+        # Liveness probe to check if the app is healthy
         livenessProbe:
           httpGet:
             path: /health
