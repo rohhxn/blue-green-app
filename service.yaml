@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  type: NodePort # Using NodePort explicitly
+  selector:
+    app: myapp
+    version: blue # <-- IMPORTANT: Initially points to blue
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      nodePort: 30500 # <-- Using the port we know works!

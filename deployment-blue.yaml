@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-blue
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: myapp
+        version: blue
+    spec:
+      containers:
+      - name: myapp-container
+        image: rohhxn/myapp-bluegreen:__IMAGE_TAG__ # Placeholder
+        ports:
+        - containerPort: 8080
+        env:
+        - name: APP_VERSION
+          value: "__VERSION__ (Blue)"
+        - name: BACKGROUND_COLOR
+          value: "cornflowerblue"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
