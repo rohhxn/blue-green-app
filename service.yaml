@@ -1,14 +1,19 @@
+# This is the "router" service
+# It will point to "blue" or "green", but never both
 apiVersion: v1
 kind: Service
 metadata:
   name: myapp-service
 spec:
-  type: NodePort # Using NodePort explicitly
-  selector:
-    app: myapp
-    version: blue # <-- IMPORTANT: Initially points to blue
+  # We use NodePort to expose it on a static port on the EC2 instance
+  type: NodePort
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080
-      nodePort: 30500 # <-- Using the port we know works!
+    - port: 80 # Port inside the cluster
+      targetPort: 8080 # Port on the pod (must match app.js)
+      nodePort: 30500 # Public port on the EC2 instance
+      protocol: TCP
+  selector:
+    # This selector MUST point to the "blue" version initially
+    app: myapp
+    version: blue
+
